@@ -84,7 +84,7 @@ public class SplitVariableRefactoring implements Refactoring {
 
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(getName()).append("\t");
+		sb.append(getName()).append(" ");
 		sb.append(oldVariable);
 		sb.append(" to ");
 		sb.append(splitVariables);

@@ -21,7 +21,7 @@ public class ExtractSuperclassRefactoring implements Refactoring {
 
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(getName()).append("\t");
+		sb.append(getName()).append(" ");
 		sb.append(extractedClass);
 		sb.append(" from classes ");
 		sb.append(subclassSet);

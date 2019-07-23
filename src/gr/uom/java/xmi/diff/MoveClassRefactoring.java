@@ -20,7 +20,7 @@ public class MoveClassRefactoring implements Refactoring {
 
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(getName()).append("\t");
+		sb.append(getName()).append(" ");
 		sb.append(originalClass.getName());
 		sb.append(" moved to ");
 		sb.append(movedClass.getName());

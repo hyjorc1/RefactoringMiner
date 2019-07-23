@@ -23,7 +23,7 @@ public class ReplaceAttributeRefactoring extends MoveAttributeRefactoring {
 
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(getName()).append("\t");
+		sb.append(getName()).append(" ");
 		sb.append(originalAttribute);
 		sb.append(" from class ");
 		sb.append(getSourceClassName());

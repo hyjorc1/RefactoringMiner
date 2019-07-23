@@ -52,9 +52,10 @@ public class UMLModelASTReader {
 	private String projectRoot;
 	private ASTParser parser;
 
+	@SuppressWarnings("deprecation")
 	public UMLModelASTReader(Map<String, String> javaFileContents, Set<String> repositoryDirectories) {
 		this.umlModel = new UMLModel(repositoryDirectories);
-		this.parser = ASTParser.newParser(AST.JLS11);
+		this.parser = ASTParser.newParser(AST.JLS8);
 		for(String filePath : javaFileContents.keySet()) {
 			Map<String, String> options = JavaCore.getOptions();
 			options.put(JavaCore.COMPILER_CODEGEN_TARGET_PLATFORM, JavaCore.VERSION_1_8);

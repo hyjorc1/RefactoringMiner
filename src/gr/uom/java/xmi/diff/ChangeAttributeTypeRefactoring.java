@@ -58,7 +58,7 @@ public class ChangeAttributeTypeRefactoring implements Refactoring {
 
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(getName()).append("\t");
+		sb.append(getName()).append(" ");
 		sb.append(originalAttribute);
 		sb.append(" to ");
 		sb.append(changedTypeAttribute);

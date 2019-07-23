@@ -15,7 +15,7 @@ public class PushDownAttributeRefactoring extends MoveAttributeRefactoring {
 
 	public String toString() {
 		StringBuilder sb = new StringBuilder();
-		sb.append(getName()).append("\t");
+		sb.append(getName()).append(" ");
 		sb.append(getOriginalAttribute());
 		sb.append(" from class ");
 		sb.append(getSourceClassName());
