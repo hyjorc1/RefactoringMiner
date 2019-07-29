@@ -5,6 +5,7 @@ import gr.uom.java.xmi.UMLAttribute;
 import gr.uom.java.xmi.UMLOperation;
 import gr.uom.java.xmi.UMLParameter;
 import gr.uom.java.xmi.UMLType;
+import gr.uom.java.xmi.decomposition.replacement.CompositeReplacement;
 import gr.uom.java.xmi.decomposition.replacement.MergeVariableReplacement;
 import gr.uom.java.xmi.decomposition.replacement.MethodInvocationReplacement;
 import gr.uom.java.xmi.decomposition.replacement.ObjectCreationReplacement;
@@ -175,6 +176,20 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 		}
 	}
 	
+	private boolean returnWithVariableReplacement(AbstractCodeMapping mapping) {
+		if(mapping.getReplacements().size() == 1) {
+			Replacement r = mapping.getReplacements().iterator().next();
+			if(r.getType().equals(ReplacementType.VARIABLE_NAME)) {
+				String fragment1 = mapping.getFragment1().getString();
+				String fragment2 = mapping.getFragment2().getString();
+				if(fragment1.equals("return " + r.getBefore() + ";\n") && fragment2.equals("return " + r.getAfter() + ";\n")) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	public UMLOperationBodyMapper(UMLOperationBodyMapper operationBodyMapper, UMLOperation addedOperation,
 			Map<String, String> parameterToArgumentMap1, Map<String, String> parameterToArgumentMap2) throws RefactoringMinerTimedOutException {
 		this.parentMapper = operationBodyMapper;
@@ -194,7 +209,7 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 			//adding leaves that were mapped with replacements
 			Set<StatementObject> addedLeaves1 = new LinkedHashSet<StatementObject>();
 			for(AbstractCodeMapping mapping : operationBodyMapper.getMappings()) {
-				if(!mapping.getReplacements().isEmpty() || !mapping.getFragment1().equalFragment(mapping.getFragment2())) {
+				if(!returnWithVariableReplacement(mapping) && (!mapping.getReplacements().isEmpty() || !mapping.getFragment1().equalFragment(mapping.getFragment2()))) {
 					AbstractCodeFragment fragment = mapping.getFragment1();
 					if(fragment instanceof StatementObject) {
 						StatementObject statement = (StatementObject)fragment;
@@ -357,7 +372,7 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 			//adding leaves that were mapped with replacements or are inexact matches
 			Set<StatementObject> addedLeaves2 = new LinkedHashSet<StatementObject>();
 			for(AbstractCodeMapping mapping : operationBodyMapper.getMappings()) {
-				if(!mapping.getReplacements().isEmpty() || !mapping.getFragment1().equalFragment(mapping.getFragment2())) {
+				if(!returnWithVariableReplacement(mapping) && (!mapping.getReplacements().isEmpty() || !mapping.getFragment1().equalFragment(mapping.getFragment2()))) {
 					AbstractCodeFragment fragment = mapping.getFragment2();
 					if(fragment instanceof StatementObject) {
 						StatementObject statement = (StatementObject)fragment;
@@ -755,75 +770,154 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 			Map<String, String> parameterToArgumentMap) throws RefactoringMinerTimedOutException {
 		List<UMLOperation> removedOperations = classDiff != null ? classDiff.getRemovedOperations() : new ArrayList<UMLOperation>();
 		List<UMLOperation> addedOperations = classDiff != null ? classDiff.getAddedOperations() : new ArrayList<UMLOperation>();
-		//exact string+depth matching - inner nodes
-		for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
-			CompositeStatementObject statement1 = innerNodeIterator1.next();
-			TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
-			for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
-				CompositeStatementObject statement2 = innerNodeIterator2.next();
-				double score = computeScore(statement1, statement2, removedOperations, addedOperations);
-				if((statement1.getString().equals(statement2.getString()) || statement1.getArgumentizedString().equals(statement2.getArgumentizedString())) &&
-						statement1.getDepth() == statement2.getDepth() &&
-						(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
-					CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
-					mappingSet.add(mapping);
+		if(innerNodes1.size() <= innerNodes2.size()) {
+			//exact string+depth matching - inner nodes
+			for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
+				CompositeStatementObject statement1 = innerNodeIterator1.next();
+				TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+				for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
+					CompositeStatementObject statement2 = innerNodeIterator2.next();
+					double score = computeScore(statement1, statement2, removedOperations, addedOperations);
+					if((statement1.getString().equals(statement2.getString()) || statement1.getArgumentizedString().equals(statement2.getArgumentizedString())) &&
+							statement1.getDepth() == statement2.getDepth() &&
+							(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
+						CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
+						mappingSet.add(mapping);
+					}
+				}
+				if(!mappingSet.isEmpty()) {
+					CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
+					mappings.add(minStatementMapping);
+					innerNodes2.remove(minStatementMapping.getFragment2());
+					innerNodeIterator1.remove();
 				}
 			}
-			if(!mappingSet.isEmpty()) {
-				CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
-				mappings.add(minStatementMapping);
-				innerNodes2.remove(minStatementMapping.getFragment2());
-				innerNodeIterator1.remove();
+			
+			//exact string matching - inner nodes - finds moves to another level
+			for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
+				CompositeStatementObject statement1 = innerNodeIterator1.next();
+				TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+				for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
+					CompositeStatementObject statement2 = innerNodeIterator2.next();
+					double score = computeScore(statement1, statement2, removedOperations, addedOperations);
+					if((statement1.getString().equals(statement2.getString()) || statement1.getArgumentizedString().equals(statement2.getArgumentizedString())) &&
+							(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
+						CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
+						mappingSet.add(mapping);
+					}
+				}
+				if(!mappingSet.isEmpty()) {
+					CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
+					mappings.add(minStatementMapping);
+					innerNodes2.remove(minStatementMapping.getFragment2());
+					innerNodeIterator1.remove();
+				}
+			}
+			
+			// exact matching - inner nodes - with variable renames
+			for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
+				CompositeStatementObject statement1 = innerNodeIterator1.next();
+				TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+				for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
+					CompositeStatementObject statement2 = innerNodeIterator2.next();
+					
+					ReplacementInfo replacementInfo = initializeReplacementInfo(statement1, statement2, innerNodes1, innerNodes2);
+					Set<Replacement> replacements = findReplacementsWithExactMatching(statement1, statement2, parameterToArgumentMap, replacementInfo);
+					
+					double score = computeScore(statement1, statement2, removedOperations, addedOperations);
+					if(score == 0 && replacements != null && replacements.size() == 1 &&
+							(replacements.iterator().next().getType().equals(ReplacementType.INFIX_OPERATOR) || replacements.iterator().next().getType().equals(ReplacementType.INVERT_CONDITIONAL))) {
+						//special handling when there is only an infix operator or invert conditional replacement, but no children mapped
+						score = 1;
+					}
+					if(replacements != null &&
+							(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
+						CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
+						mapping.addReplacements(replacements);
+						mappingSet.add(mapping);
+					}
+				}
+				if(!mappingSet.isEmpty()) {
+					CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
+					mappings.add(minStatementMapping);
+					innerNodes2.remove(minStatementMapping.getFragment2());
+					innerNodeIterator1.remove();
+				}
 			}
 		}
-		
-		//exact string matching - inner nodes - finds moves to another level
-		for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
-			CompositeStatementObject statement1 = innerNodeIterator1.next();
-			TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+		else {
+			//exact string+depth matching - inner nodes
 			for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
 				CompositeStatementObject statement2 = innerNodeIterator2.next();
-				double score = computeScore(statement1, statement2, removedOperations, addedOperations);
-				if((statement1.getString().equals(statement2.getString()) || statement1.getArgumentizedString().equals(statement2.getArgumentizedString())) &&
-						(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
-					CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
-					mappingSet.add(mapping);
+				TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+				for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
+					CompositeStatementObject statement1 = innerNodeIterator1.next();
+					double score = computeScore(statement1, statement2, removedOperations, addedOperations);
+					if((statement1.getString().equals(statement2.getString()) || statement1.getArgumentizedString().equals(statement2.getArgumentizedString())) &&
+							statement1.getDepth() == statement2.getDepth() &&
+							(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
+						CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
+						mappingSet.add(mapping);
+					}
+				}
+				if(!mappingSet.isEmpty()) {
+					CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
+					mappings.add(minStatementMapping);
+					innerNodes1.remove(minStatementMapping.getFragment1());
+					innerNodeIterator2.remove();
 				}
 			}
-			if(!mappingSet.isEmpty()) {
-				CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
-				mappings.add(minStatementMapping);
-				innerNodes2.remove(minStatementMapping.getFragment2());
-				innerNodeIterator1.remove();
-			}
-		}
-		
-		// exact matching - inner nodes - with variable renames
-		for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
-			CompositeStatementObject statement1 = innerNodeIterator1.next();
-			TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+			
+			//exact string matching - inner nodes - finds moves to another level
 			for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
 				CompositeStatementObject statement2 = innerNodeIterator2.next();
-				Set<Replacement> replacements = findReplacementsWithExactMatching(statement1, statement2, parameterToArgumentMap);
-				
-				double score = computeScore(statement1, statement2, removedOperations, addedOperations);
-				if(score == 0 && replacements != null && replacements.size() == 1 &&
-						(replacements.iterator().next().getType().equals(ReplacementType.INFIX_OPERATOR) || replacements.iterator().next().getType().equals(ReplacementType.INVERT_CONDITIONAL))) {
-					//special handling when there is only an infix operator or invert conditional replacement, but no children mapped
-					score = 1;
+				TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+				for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
+					CompositeStatementObject statement1 = innerNodeIterator1.next();
+					double score = computeScore(statement1, statement2, removedOperations, addedOperations);
+					if((statement1.getString().equals(statement2.getString()) || statement1.getArgumentizedString().equals(statement2.getArgumentizedString())) &&
+							(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
+						CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
+						mappingSet.add(mapping);
+					}
 				}
-				if(replacements != null &&
-						(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
-					CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
-					mapping.addReplacements(replacements);
-					mappingSet.add(mapping);
+				if(!mappingSet.isEmpty()) {
+					CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
+					mappings.add(minStatementMapping);
+					innerNodes1.remove(minStatementMapping.getFragment1());
+					innerNodeIterator2.remove();
 				}
 			}
-			if(!mappingSet.isEmpty()) {
-				CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
-				mappings.add(minStatementMapping);
-				innerNodes2.remove(minStatementMapping.getFragment2());
-				innerNodeIterator1.remove();
+			
+			// exact matching - inner nodes - with variable renames
+			for(ListIterator<CompositeStatementObject> innerNodeIterator2 = innerNodes2.listIterator(); innerNodeIterator2.hasNext();) {
+				CompositeStatementObject statement2 = innerNodeIterator2.next();
+				TreeSet<CompositeStatementObjectMapping> mappingSet = new TreeSet<CompositeStatementObjectMapping>();
+				for(ListIterator<CompositeStatementObject> innerNodeIterator1 = innerNodes1.listIterator(); innerNodeIterator1.hasNext();) {
+					CompositeStatementObject statement1 = innerNodeIterator1.next();
+					
+					ReplacementInfo replacementInfo = initializeReplacementInfo(statement1, statement2, innerNodes1, innerNodes2);
+					Set<Replacement> replacements = findReplacementsWithExactMatching(statement1, statement2, parameterToArgumentMap, replacementInfo);
+					
+					double score = computeScore(statement1, statement2, removedOperations, addedOperations);
+					if(score == 0 && replacements != null && replacements.size() == 1 &&
+							(replacements.iterator().next().getType().equals(ReplacementType.INFIX_OPERATOR) || replacements.iterator().next().getType().equals(ReplacementType.INVERT_CONDITIONAL))) {
+						//special handling when there is only an infix operator or invert conditional replacement, but no children mapped
+						score = 1;
+					}
+					if(replacements != null &&
+							(score > 0 || Math.max(statement1.getStatements().size(), statement2.getStatements().size()) == 0)) {
+						CompositeStatementObjectMapping mapping = createCompositeMapping(statement1, statement2, parameterToArgumentMap, score);
+						mapping.addReplacements(replacements);
+						mappingSet.add(mapping);
+					}
+				}
+				if(!mappingSet.isEmpty()) {
+					CompositeStatementObjectMapping minStatementMapping = mappingSet.first();
+					mappings.add(minStatementMapping);
+					innerNodes1.remove(minStatementMapping.getFragment1());
+					innerNodeIterator2.remove();
+				}
 			}
 		}
 	}
@@ -903,7 +997,8 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 				for(ListIterator<? extends AbstractCodeFragment> leafIterator2 = leaves2.listIterator(); leafIterator2.hasNext();) {
 					AbstractCodeFragment leaf2 = leafIterator2.next();
 					
-					Set<Replacement> replacements = findReplacementsWithExactMatching(leaf1, leaf2, parameterToArgumentMap);
+					ReplacementInfo replacementInfo = initializeReplacementInfo(leaf1, leaf2, leaves1, leaves2);
+					Set<Replacement> replacements = findReplacementsWithExactMatching(leaf1, leaf2, parameterToArgumentMap, replacementInfo);
 					if (replacements != null) {
 						LeafMapping mapping = createLeafMapping(leaf1, leaf2, parameterToArgumentMap);
 						mapping.addReplacements(replacements);
@@ -984,7 +1079,8 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 				for(ListIterator<? extends AbstractCodeFragment> leafIterator1 = leaves1.listIterator(); leafIterator1.hasNext();) {
 					AbstractCodeFragment leaf1 = leafIterator1.next();
 					
-					Set<Replacement> replacements = findReplacementsWithExactMatching(leaf1, leaf2, parameterToArgumentMap);
+					ReplacementInfo replacementInfo = initializeReplacementInfo(leaf1, leaf2, leaves1, leaves2);
+					Set<Replacement> replacements = findReplacementsWithExactMatching(leaf1, leaf2, parameterToArgumentMap, replacementInfo);
 					if (replacements != null) {
 						LeafMapping mapping = createLeafMapping(leaf1, leaf2, parameterToArgumentMap);
 						mapping.addReplacements(replacements);
@@ -1044,6 +1140,19 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 				leaves2.remove(minStatementMapping.getFragment2());
 			}
 		}
+	}
+
+	private ReplacementInfo initializeReplacementInfo(AbstractCodeFragment leaf1, AbstractCodeFragment leaf2,
+			List<? extends AbstractCodeFragment> leaves1, List<? extends AbstractCodeFragment> leaves2) {
+		List<? extends AbstractCodeFragment> l1 = new ArrayList<AbstractCodeFragment>(leaves1);
+		l1.remove(leaf1);
+		List<? extends AbstractCodeFragment> l2 = new ArrayList<AbstractCodeFragment>(leaves2);
+		l2.remove(leaf2);
+		ReplacementInfo replacementInfo = new ReplacementInfo(
+				preprocessInput1(leaf1, leaf2),
+				preprocessInput2(leaf1, leaf2),
+				l1, l2);
+		return replacementInfo;
 	}
 
 	private boolean variableDeclarationMappingsWithSameReplacementTypes(Set<LeafMapping> mappingSet) {
@@ -1112,10 +1221,15 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 		private String argumentizedString2;
 		private int rawDistance;
 		private Set<Replacement> replacements;
+		private List<? extends AbstractCodeFragment> statements1;
+		private List<? extends AbstractCodeFragment> statements2;
 		
-		public ReplacementInfo(String argumentizedString1, String argumentizedString2) {
+		public ReplacementInfo(String argumentizedString1, String argumentizedString2,
+				List<? extends AbstractCodeFragment> statements1, List<? extends AbstractCodeFragment> statements2) {
 			this.argumentizedString1 = argumentizedString1;
 			this.argumentizedString2 = argumentizedString2;
+			this.statements1 = statements1;
+			this.statements2 = statements2;
 			this.rawDistance = StringDistance.editDistance(argumentizedString1, argumentizedString2);
 			this.replacements = new LinkedHashSet<Replacement>();
 		}
@@ -1156,7 +1270,7 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 	}
 
 	private Set<Replacement> findReplacementsWithExactMatching(AbstractCodeFragment statement1, AbstractCodeFragment statement2,
-			Map<String, String> parameterToArgumentMap) throws RefactoringMinerTimedOutException {
+			Map<String, String> parameterToArgumentMap, ReplacementInfo replacementInfo) throws RefactoringMinerTimedOutException {
 		List<VariableDeclaration> variableDeclarations1 = new ArrayList<VariableDeclaration>(statement1.getVariableDeclarations());
 		List<VariableDeclaration> variableDeclarations2 = new ArrayList<VariableDeclaration>(statement2.getVariableDeclarations());
 		VariableDeclaration variableDeclarationWithArrayInitializer1 = declarationWithArrayInitializer(variableDeclarations1);
@@ -1195,10 +1309,6 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 		Map<String, List<? extends AbstractCall>> creationMap2 = new LinkedHashMap<String, List<? extends AbstractCall>>(statement2.getCreationMap());
 		Set<String> creations1 = new LinkedHashSet<String>(creationMap1.keySet());
 		Set<String> creations2 = new LinkedHashSet<String>(creationMap2.keySet());
-		
-		ReplacementInfo replacementInfo = new ReplacementInfo(
-				preprocessInput1(statement1, statement2),
-				preprocessInput2(statement1, statement2));
 		
 		Set<String> arguments1 = new LinkedHashSet<String>(statement1.getArguments());
 		Set<String> arguments2 = new LinkedHashSet<String>(statement2.getArguments());
@@ -1525,14 +1635,41 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 				}
 			}
 		}
+		OperationInvocation assignmentInvocationCoveringTheEntireStatement1 = invocationCoveringTheEntireStatement1 == null ? statement1.assignmentInvocationCoveringEntireStatement() : invocationCoveringTheEntireStatement1;
 		//method invocation is identical
-		if(invocationCoveringTheEntireStatement1 != null && invocationCoveringTheEntireStatement2 != null) {
+		if(assignmentInvocationCoveringTheEntireStatement1 != null && invocationCoveringTheEntireStatement2 != null) {
 			for(String key1 : methodInvocationMap1.keySet()) {
 				for(AbstractCall invocation1 : methodInvocationMap1.get(key1)) {
 					if(invocation1.identical(invocationCoveringTheEntireStatement2, replacementInfo.getReplacements()) &&
-							!invocationCoveringTheEntireStatement1.getArguments().contains(key1)) {
-						String expression1 = invocationCoveringTheEntireStatement1.getExpression();
+							!assignmentInvocationCoveringTheEntireStatement1.getArguments().contains(key1)) {
+						String expression1 = assignmentInvocationCoveringTheEntireStatement1.getExpression();
 						if(expression1 == null || !expression1.contains(key1)) {
+							return replacementInfo.getReplacements();
+						}
+					}
+					else if(invocation1.identicalName(invocationCoveringTheEntireStatement2) && invocation1.equalArguments(invocationCoveringTheEntireStatement2) &&
+							!assignmentInvocationCoveringTheEntireStatement1.getArguments().contains(key1) && invocationCoveringTheEntireStatement2.getExpression() != null) {
+						boolean expressionMatched = false;
+						Set<AbstractCodeFragment> additionallyMatchedStatements2 = new LinkedHashSet<AbstractCodeFragment>();
+						for(AbstractCodeFragment codeFragment : replacementInfo.statements2) {
+							VariableDeclaration variableDeclaration = codeFragment.getVariableDeclaration(invocationCoveringTheEntireStatement2.getExpression());
+							OperationInvocation invocationCoveringEntireCodeFragment = codeFragment.invocationCoveringEntireFragment();
+							if(variableDeclaration != null && invocation1.getExpression() != null && invocation1.getExpression().equals(variableDeclaration.getInitializer().getString())) {
+								Replacement r = new Replacement(invocation1.getExpression(), variableDeclaration.getVariableName(), ReplacementType.VARIABLE_REPLACED_WITH_EXPRESSION_OF_METHOD_INVOCATION);
+								replacementInfo.getReplacements().add(r);
+								additionallyMatchedStatements2.add(codeFragment);
+								expressionMatched = true;
+							}
+							if(invocationCoveringEntireCodeFragment != null && assignmentInvocationCoveringTheEntireStatement1.identicalName(invocationCoveringEntireCodeFragment) &&
+									assignmentInvocationCoveringTheEntireStatement1.equalArguments(invocationCoveringEntireCodeFragment)) {
+								additionallyMatchedStatements2.add(codeFragment);
+							}
+						}
+						if(expressionMatched) {
+							if(additionallyMatchedStatements2.size() > 0) {
+								Replacement r = new CompositeReplacement(statement1.getString(), statement2.getString(), new LinkedHashSet<AbstractCodeFragment>(), additionallyMatchedStatements2);
+								replacementInfo.getReplacements().add(r);
+							}
 							return replacementInfo.getReplacements();
 						}
 					}
@@ -1665,6 +1802,21 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 			for(AbstractCall operationInvocation1 : methodInvocationMap1.get(methodInvocation1)) {
 				if(statement1.getString().endsWith(methodInvocation1 + ";\n") && (r = operationInvocation1.makeReplacementForReturnedArgument(replacementInfo.getArgumentizedString2())) != null) {
 					if(operationInvocation1.makeReplacementForReturnedArgument(statement2.getString()) != null) {
+						replacementInfo.addReplacement(r);
+						return replacementInfo.getReplacements();
+					}
+				}
+			}
+		}
+		//check if the argument of the method call in the second statement is returned in the first statement
+		if(invocationCoveringTheEntireStatement2 != null && (r = invocationCoveringTheEntireStatement2.makeReplacementForWrappedCall(replacementInfo.getArgumentizedString1())) != null) {
+			replacementInfo.addReplacement(r);
+			return replacementInfo.getReplacements();
+		}
+		for(String methodInvocation2 : methodInvocations2) {
+			for(AbstractCall operationInvocation2 : methodInvocationMap2.get(methodInvocation2)) {
+				if(statement2.getString().endsWith(methodInvocation2 + ";\n") && (r = operationInvocation2.makeReplacementForWrappedCall(replacementInfo.getArgumentizedString1())) != null) {
+					if(operationInvocation2.makeReplacementForWrappedCall(statement1.getString()) != null) {
 						replacementInfo.addReplacement(r);
 						return replacementInfo.getReplacements();
 					}
@@ -2365,7 +2517,13 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 					Replacement matchingReplacement = null;
 					for(Replacement replacement : replacementInfo.getReplacements()) {
 						if(replacement.getType().equals(ReplacementType.VARIABLE_NAME)) {
-							if(operation1.getVariableDeclaration(replacement.getBefore()) != null &&
+							int indexOf1 = s1.indexOf(replacement.getAfter());
+							int indexOf2 = s2.indexOf(replacement.getAfter());
+							boolean isVariableDeclarationReplacement =
+									s1.charAt(indexOf1 + replacement.getAfter().length()) == '=' &&
+									s2.charAt(indexOf2 + replacement.getAfter().length()) == '=';
+							if(!isVariableDeclarationReplacement &&
+									operation1.getVariableDeclaration(replacement.getBefore()) != null &&
 									operation2.getVariableDeclaration(replacement.getAfter()) != null) {
 								matchingReplacement = replacement;
 								break;
@@ -2955,16 +3113,20 @@ public class UMLOperationBodyMapper implements Comparable<UMLOperationBodyMapper
 			}
 			if(mappedLeavesSize == 0) {
 				//check for possible extract or inline
-				if(leaveSize2 == 1) {
-					OperationInvocation invocation = leaves2.get(0).invocationCoveringEntireFragment();
-					if(invocation != null && matchesOperation(invocation, addedOperations, operation2.variableTypeMap())) {
-						mappedLeavesSize++;
+				if(leaveSize2 <= 2) {
+					for(StatementObject leaf2 : leaves2) {
+						OperationInvocation invocation = leaf2.invocationCoveringEntireFragment();
+						if(invocation != null && matchesOperation(invocation, addedOperations, operation2.variableTypeMap())) {
+							mappedLeavesSize++;
+						}
 					}
 				}
-				else if(leaveSize1 == 1) {
-					OperationInvocation invocation = leaves1.get(0).invocationCoveringEntireFragment();
-					if(invocation != null && matchesOperation(invocation, removedOperations, operation1.variableTypeMap())) {
-						mappedLeavesSize++;
+				else if(leaveSize1 <= 2) {
+					for(StatementObject leaf1 : leaves1) {
+						OperationInvocation invocation = leaf1.invocationCoveringEntireFragment();
+						if(invocation != null && matchesOperation(invocation, removedOperations, operation1.variableTypeMap())) {
+							mappedLeavesSize++;
+						}
 					}
 				}
 			}
