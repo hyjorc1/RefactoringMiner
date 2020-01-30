@@ -2,9 +2,19 @@ package boa_2020;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevSort;
+import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.refactoringminer.api.GitHistoryRefactoringMiner;
 import org.refactoringminer.api.GitService;
@@ -20,6 +30,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class test {
+	
+	private static ExecutorService executor;
 
 	public static void main(String[] args) {
 		GitService gitService = new GitServiceImpl();
@@ -34,28 +46,9 @@ public class test {
 					for (Refactoring ref : refactorings) {
 						System.out.println(ref.toJSON());
 					}
-//					String s = refactorings.get(0).toJSON();
-//					System.out.println(s);
-//					JsonParser parser = new JsonParser();
-//					JsonElement jsonTree = parser.parse(s);
-//					if (jsonTree.isJsonObject()) {
-//						System.out.println("yes");
-//						JsonObject jsonObject = jsonTree.getAsJsonObject();
-//						JsonElement type = jsonObject.get("type");
-//						System.out.println(type.getAsString());
-//					}
 				}
 			});
-
-//			miner.detectAll(repo, "master", new RefactoringHandler() {
-//				@Override
-//				public void handle(String commitId, List<Refactoring> refactorings) {
-//					System.out.println("Refactorings at " + commitId);
-//					for (Refactoring ref : refactorings) {
-//						System.out.println(ref.toString());
-//					}
-//				}
-//			});
+			
 
 		} catch (IOException e) {
 			e.printStackTrace();
