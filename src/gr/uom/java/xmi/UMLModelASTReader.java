@@ -55,7 +55,7 @@ public class UMLModelASTReader {
 
 	public UMLModelASTReader(Map<String, String> javaFileContents, Set<String> repositoryDirectories) {
 		this.umlModel = new UMLModel(repositoryDirectories);
-		this.parser = ASTParser.newParser(AST.JLS11);
+		this.parser = ASTParser.newParser(AST.JLS8);
 		for(String filePath : javaFileContents.keySet()) {
 			Map<String, String> options = JavaCore.getOptions();
 			options.put(JavaCore.COMPILER_CODEGEN_TARGET_PLATFORM, JavaCore.VERSION_1_8);
@@ -100,7 +100,7 @@ public class UMLModelASTReader {
 	}
 
 	private static ASTParser buildAstParser(File srcFolder) {
-		ASTParser parser = ASTParser.newParser(AST.JLS11);
+		ASTParser parser = ASTParser.newParser(AST.JLS8);
 		parser.setKind(ASTParser.K_COMPILATION_UNIT);
 		Map<String, String> options = JavaCore.getOptions();
 		JavaCore.setComplianceOptions(JavaCore.VERSION_1_8, options);
