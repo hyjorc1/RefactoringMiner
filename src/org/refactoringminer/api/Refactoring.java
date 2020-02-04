@@ -29,7 +29,7 @@ public interface Refactoring extends Serializable, CodeRangeProvider {
 		return sb.toString();
 	}
 	
-	default List<CodeRange> getFirst(List<CodeRange> list) {
+	default public List<CodeRange> getFirst(List<CodeRange> list) {
 		List<CodeRange> l = new ArrayList<CodeRange>();
 		l.add(list.get(0));
 		return l;
